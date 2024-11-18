@@ -24,6 +24,13 @@
 #include "execute.h"
 
 
+
+typedef union {
+    int i;       
+    double d;    
+    char* s;      
+} ResultUnion;
+
 //
 // retrieve_value
 //
@@ -33,19 +40,19 @@
 // Called in execute_binary_expression to compute lhs and rhs of binary expression 
 // Returns false if semantic error (identifier not found in RAM), else true
 //
-bool retrive_value(struct UNARY_EXPR* expr, int* result, int* type, struct RAM* memory, int line) {
+bool retrive_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, struct RAM* memory, int line) {
   char* string_value = expr->element->element_value; 
   int expr_type = expr->element->element_type; 
   if (expr_type==ELEMENT_INT_LITERAL) {
     int num = atoi(string_value); 
-    *result=num; 
+    result->i=num; 
     *type=RAM_TYPE_INT; 
   } else if (expr_type==ELEMENT_REAL_LITERAL) {
     double num = atof(string_value); 
-    *(double*)result = num; 
+    result->d=num;  
     *type=RAM_TYPE_REAL; 
   } else if (expr_type==ELEMENT_STR_LITERAL) {
-    *(char**)result = string_value; 
+    result->s=string_value; 
     *type=RAM_TYPE_STR; 
   } else if (expr_type==ELEMENT_IDENTIFIER) {
     struct RAM_VALUE* cell_ram_value = ram_read_cell_by_name(memory, string_value); 
@@ -55,14 +62,14 @@ bool retrive_value(struct UNARY_EXPR* expr, int* result, int* type, struct RAM* 
     }
     int ram_type = cell_ram_value->value_type; 
     if (ram_type==RAM_TYPE_INT) {
-      *result = cell_ram_value->types.i; 
+      result->i=cell_ram_value->types.i;
       *type=RAM_TYPE_INT; 
     } else if (ram_type==RAM_TYPE_REAL) {
-      *(double*)result = cell_ram_value->types.d; 
+      result->d=cell_ram_value->types.d; 
       *type=RAM_TYPE_REAL; 
     } else if (ram_type==RAM_TYPE_STR) {
-      *(char**)result = cell_ram_value->types.s; 
-      *type=RAM_TYPE_STR; 
+      result->s = cell_ram_value->types.s;
+      *type = RAM_TYPE_STR;
     }
   }
   return true; 
@@ -130,11 +137,11 @@ char* operator_str_concat_evaluate(char* result_lhs, char* result_rhs) {
 // Executes binary expression by combining lhs and rhs values with appropriate operator 
 // Places answer in pass by reference variable result, and returns false if semantic error, else true
 //
-bool execute_binary_expression(struct EXPR* expr, int* result, int* result_type, struct RAM* memory, int line) {
+bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* result_type, struct RAM* memory, int line) {
   struct UNARY_EXPR* lhs=expr->lhs; 
   struct UNARY_EXPR* rhs=expr->rhs; 
 
-  int result_lhs, result_rhs; 
+  ResultUnion result_lhs, result_rhs; 
   int type_lhs, type_rhs; 
 
   bool lhs_success = retrive_value(lhs, &result_lhs, &type_lhs, memory, line); 
@@ -144,41 +151,40 @@ bool execute_binary_expression(struct EXPR* expr, int* result, int* result_type,
     return false; 
   }
 
+
   if (type_lhs==RAM_TYPE_INT && type_rhs == RAM_TYPE_INT) {
     int result_int_operation; 
-    bool success = operator_int_evaluate(expr, result_lhs, result_rhs, &result_int_operation); 
+    bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation); 
     if (!success) {
       printf("**SEMANTIC ERROR: ZeroDivisionError: division by zero (line %d)\n", line);
       return false; 
     }
-    *result = result_int_operation; 
+    result->i= result_int_operation; 
     *result_type = RAM_TYPE_INT;
   } else if (type_lhs==RAM_TYPE_REAL && type_rhs==RAM_TYPE_REAL) {
-    double lhs_real = *(double*)&result_lhs; 
-    double rhs_real = *(double*)&result_rhs; 
     double result_real_operation; 
-    bool success = operator_real_evaluate(expr, lhs_real, rhs_real, &result_real_operation); 
+    bool success = operator_real_evaluate(expr, result_lhs.d, result_rhs.d, &result_real_operation); 
     if (!success) {
       printf("**SEMANTIC ERROR: ZeroDivisionError: division by zero (line %d)\n", line);
       return false; 
     }
-    *(double*)result = result_real_operation; 
+    result->d = result_real_operation; 
     *result_type = RAM_TYPE_REAL;
   } else if ((type_lhs == RAM_TYPE_INT && type_rhs == RAM_TYPE_REAL) || (type_lhs == RAM_TYPE_REAL && type_rhs == RAM_TYPE_INT)) {
-    double lhs_real =(type_lhs == RAM_TYPE_INT) ? (double)result_lhs : *(double*)&result_lhs;
-    double rhs_real = (type_rhs == RAM_TYPE_INT) ? (double)result_rhs : *(double*)&result_rhs;
+    double lhs_real =(type_lhs == RAM_TYPE_INT) ? (double)result_lhs.i : result_lhs.d;
+    double rhs_real = (type_rhs == RAM_TYPE_INT) ? (double)result_rhs.i : result_rhs.d;
     double result_real_operation; 
     bool success = operator_real_evaluate(expr, lhs_real, rhs_real, &result_real_operation); 
     if (!success) {
       printf("**SEMANTIC ERROR: ZeroDivisionError: division by zero (line %d)\n", line);
       return false; 
     }
-    *(double*)result = result_real_operation;
+    result->d= result_real_operation;
     *result_type = RAM_TYPE_REAL;
   } else if (type_lhs==RAM_TYPE_STR && type_rhs==RAM_TYPE_STR) {
-    char* lhs_str = *(char**)&result_lhs; 
-    char* rhs_str = *(char**)&result_rhs; 
-    *(char**)result = operator_str_concat_evaluate(lhs_str, rhs_str); 
+    char* lhs_str = result_lhs.s;
+    char* rhs_str = result_rhs.s;
+    result->s = operator_str_concat_evaluate(lhs_str, rhs_str);
     *result_type = RAM_TYPE_STR;
   } else {
     printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
@@ -208,20 +214,20 @@ bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
     struct EXPR* expr = rhs->types.expr; 
 
     if (expr->isBinaryExpr) {
-      int result; 
+      ResultUnion result; 
       int result_type; 
       bool success = execute_binary_expression(expr, &result, &result_type, memory, line); 
       if (!success) {
         return false; 
       }
       if (result_type==RAM_TYPE_INT) {
-        i.types.i=result; 
+        i.types.i=result.i; 
         i.value_type=RAM_TYPE_INT; 
       } else if (result_type==RAM_TYPE_REAL) {
-        i.types.d=*(double*)&result; 
+        i.types.d=result.d; 
         i.value_type=RAM_TYPE_REAL; 
       } else if (result_type==RAM_TYPE_STR) {
-        i.types.s=*(char**)&result; 
+        i.types.s=result.s; 
         i.value_type=RAM_TYPE_STR; 
       }
       ram_write_cell_by_name(memory, i, var_name); 
