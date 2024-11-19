@@ -28,7 +28,7 @@
 typedef union {
     int i;       
     double d;    
-    char* s;      
+    char* s;   
 } ResultUnion;
 
 //
@@ -75,60 +75,133 @@ bool retrive_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, stru
   return true; 
 }
 
-bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, int* result_int_operation) {
+bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, int* result_int_operation, int* type) {
   int res; 
   int operator = expr->operator; 
   if (operator==OPERATOR_PLUS) {
     res = result_lhs + result_rhs; 
+    *type=RAM_TYPE_INT; 
   } else if (operator==OPERATOR_MINUS) {
     res = result_lhs - result_rhs; 
+    *type=RAM_TYPE_INT;
   } else if (operator==OPERATOR_ASTERISK) {
     res = result_lhs * result_rhs; 
+    *type=RAM_TYPE_INT;
   } else if (operator==OPERATOR_DIV) {
     if (result_rhs==0) {
       return false; 
     }
     res = result_lhs / result_rhs; 
+    *type=RAM_TYPE_INT;
   } else if (operator==OPERATOR_MOD) {
     res = result_lhs % result_rhs; 
+    *type=RAM_TYPE_INT;
   } else if (operator==OPERATOR_POWER) {
     res = (int)pow(result_lhs, result_rhs); 
+    *type=RAM_TYPE_INT;
+  } else if (operator==OPERATOR_EQUAL) {
+    res = (double)(result_lhs==result_rhs); 
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_NOT_EQUAL) {
+    res = (double)(result_lhs!=result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_LT) {
+    res = (double)(result_lhs<result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_LTE) {
+    res = (double)(result_lhs<=result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_GT) {
+    res = (double)(result_lhs>result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_GTE) {
+    res = (double)(result_lhs>=result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
   }
   *result_int_operation = res; 
   return true; 
 }
 
-bool operator_real_evaluate(struct EXPR* expr, double result_lhs, double result_rhs, double* result_real_operation) {
+bool operator_real_evaluate(struct EXPR* expr, double result_lhs, double result_rhs, double* result_real_operation, int* type) {
   double res; 
   int operator = expr->operator; 
   if (operator==OPERATOR_PLUS) {
     res = result_lhs + result_rhs; 
+    *type=RAM_TYPE_REAL; 
   } else if (operator==OPERATOR_MINUS) {
     res = result_lhs - result_rhs; 
+    *type=RAM_TYPE_REAL;
   } else if (operator==OPERATOR_ASTERISK) {
     res = result_lhs * result_rhs; 
+    *type=RAM_TYPE_REAL;
   } else if (operator==OPERATOR_DIV) {
     if (result_rhs==0.0) {
       return false; 
     }
     res = result_lhs / result_rhs; 
+    *type=RAM_TYPE_REAL;
   } else if (operator==OPERATOR_MOD) {
     res = fmod(result_lhs, result_rhs); 
+    *type=RAM_TYPE_REAL;
   } else if (operator==OPERATOR_POWER) {
     res = pow(result_lhs, result_rhs); 
+    *type=RAM_TYPE_REAL;
+  } else if (operator==OPERATOR_EQUAL) {
+    res = (result_lhs==result_rhs); 
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_NOT_EQUAL) {
+    res = (result_lhs!=result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_LT) {
+    res = (result_lhs<result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_LTE) {
+    res = (result_lhs<=result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_GT) {
+    res = (result_lhs>result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
+  } else if (operator==OPERATOR_GTE) {
+    res = (result_lhs>=result_rhs); 
+    *type=RAM_TYPE_BOOLEAN;
   }
   *result_real_operation = res; 
   return true; 
 }
 
-char* operator_str_concat_evaluate(char* result_lhs, char* result_rhs) {
-  size_t length_lhs = strlen(result_lhs); 
-  size_t length_rhs = strlen(result_rhs);
-  int concat_length = length_lhs + length_rhs + 1; 
-  char* concat = (char*)malloc(concat_length*sizeof(char)); 
-  strcpy(concat, result_lhs); 
-  strcat(concat, result_rhs); 
-  return concat; 
+//expr, lhs_str, rhs_str, &result_string_operation, &type
+bool operator_str_concat_evaluate(struct EXPR* expr, char* result_lhs, char* result_rhs, ResultUnion* result_string_operation, int* type) {
+  int operator = expr->operator; 
+  int str_comp = strcmp(result_lhs, result_rhs); 
+  if (operator==OPERATOR_PLUS) {
+    size_t length_lhs = strlen(result_lhs); 
+    size_t length_rhs = strlen(result_rhs);
+    int concat_length = length_lhs + length_rhs + 1; 
+    char* concat = (char*)malloc(concat_length*sizeof(char)); 
+    strcpy(concat, result_lhs); 
+    strcat(concat, result_rhs); 
+    result_string_operation->s=concat; 
+    *type=RAM_TYPE_STR; 
+  } else if (operator==OPERATOR_EQUAL) {
+    result_string_operation->i = (str_comp==0) ? 1 : 0; 
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_NOT_EQUAL) {
+    result_string_operation->i = (str_comp!=0) ? 1 : 0;
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_LT) {
+    result_string_operation->i = (str_comp<0) ? 1 : 0;
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_LTE) {
+    result_string_operation->i = (str_comp<=0) ? 1 : 0; 
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_GT) {
+    result_string_operation->i = (str_comp>0) ? 1 : 0; 
+    *type=RAM_TYPE_BOOLEAN; 
+  } else if (operator==OPERATOR_GTE) {
+    result_string_operation->i = (str_comp>=0) ? 1 : 0; 
+    *type=RAM_TYPE_BOOLEAN; 
+  }
+  return true; 
 }
 
 //
@@ -154,38 +227,67 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
 
   if (type_lhs==RAM_TYPE_INT && type_rhs == RAM_TYPE_INT) {
     int result_int_operation; 
-    bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation); 
+    int type; 
+    bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation, &type); 
     if (!success) {
       printf("**SEMANTIC ERROR: ZeroDivisionError: division by zero (line %d)\n", line);
       return false; 
     }
-    result->i= result_int_operation; 
-    *result_type = RAM_TYPE_INT;
+    result->i=result_int_operation;
+    if (type==RAM_TYPE_INT) {
+      *result_type=RAM_TYPE_INT; 
+    }  else if (type==RAM_TYPE_BOOLEAN) {
+      *result_type=RAM_TYPE_BOOLEAN; 
+    }
   } else if (type_lhs==RAM_TYPE_REAL && type_rhs==RAM_TYPE_REAL) {
     double result_real_operation; 
-    bool success = operator_real_evaluate(expr, result_lhs.d, result_rhs.d, &result_real_operation); 
+    int type; 
+    bool success = operator_real_evaluate(expr, result_lhs.d, result_rhs.d, &result_real_operation, &type); 
     if (!success) {
       printf("**SEMANTIC ERROR: ZeroDivisionError: division by zero (line %d)\n", line);
       return false; 
     }
-    result->d = result_real_operation; 
-    *result_type = RAM_TYPE_REAL;
+    if (type==RAM_TYPE_REAL) {
+      result->d=result_real_operation; 
+      *result_type=RAM_TYPE_REAL; 
+    } else if (type==RAM_TYPE_BOOLEAN) {
+      result->i=(int)result_real_operation; 
+      *result_type=RAM_TYPE_BOOLEAN; 
+    }
   } else if ((type_lhs == RAM_TYPE_INT && type_rhs == RAM_TYPE_REAL) || (type_lhs == RAM_TYPE_REAL && type_rhs == RAM_TYPE_INT)) {
     double lhs_real =(type_lhs == RAM_TYPE_INT) ? (double)result_lhs.i : result_lhs.d;
     double rhs_real = (type_rhs == RAM_TYPE_INT) ? (double)result_rhs.i : result_rhs.d;
     double result_real_operation; 
-    bool success = operator_real_evaluate(expr, lhs_real, rhs_real, &result_real_operation); 
+    int type; 
+    bool success = operator_real_evaluate(expr, lhs_real, rhs_real, &result_real_operation, &type); 
     if (!success) {
       printf("**SEMANTIC ERROR: ZeroDivisionError: division by zero (line %d)\n", line);
       return false; 
     }
-    result->d= result_real_operation;
-    *result_type = RAM_TYPE_REAL;
+    if (type==RAM_TYPE_REAL) {
+      result->d=result_real_operation; 
+      *result_type=RAM_TYPE_REAL; 
+    } else if (type==RAM_TYPE_BOOLEAN) {
+      result->i=(int)result_real_operation; 
+      *result_type=RAM_TYPE_BOOLEAN; 
+    }
   } else if (type_lhs==RAM_TYPE_STR && type_rhs==RAM_TYPE_STR) {
     char* lhs_str = result_lhs.s;
     char* rhs_str = result_rhs.s;
-    result->s = operator_str_concat_evaluate(lhs_str, rhs_str);
-    *result_type = RAM_TYPE_STR;
+    ResultUnion result_string_operation; 
+    int type; 
+    bool success = operator_str_concat_evaluate(expr, lhs_str, rhs_str, &result_string_operation, &type); 
+    if (!success) {
+      //Print semantic error here 
+      return false; 
+    }
+    if (type==RAM_TYPE_STR) {
+      result->s = result_string_operation.s; 
+      *result_type=RAM_TYPE_STR; 
+    } else if (type==RAM_TYPE_BOOLEAN) {
+      result->i=result_string_operation.i; 
+      *result_type=RAM_TYPE_BOOLEAN; 
+    }
   } else {
     printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
     return false; 
@@ -193,6 +295,56 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
   return true; 
 }
 
+
+
+void execute_input(struct VALUE* rhs, struct RAM* memory, char* var_name) {
+    struct FUNCTION_CALL* func = rhs->types.function_call; 
+    char* func_name = func->function_name; 
+    printf("%s", func->parameter->element_value);
+
+    char line[256]; 
+    fgets(line, sizeof(line), stdin); 
+    line[strcspn(line, "\r\n")] = '\0';
+
+    char* input_string = (char*)malloc(sizeof(line)+1); 
+    strcpy(input_string, line); 
+    struct RAM_VALUE i; 
+    i.types.s=input_string; 
+    i.value_type=RAM_TYPE_STR; 
+    ram_write_cell_by_name(memory, i, var_name);
+}
+
+bool execute_int(struct VALUE* rhs, struct RAM* memory, char* var_name, int line) {
+  char* identifier = rhs->types.function_call->parameter->element_value;
+  struct RAM_VALUE* ram_return_value = ram_read_cell_by_name(memory, identifier); 
+  struct RAM_VALUE i; 
+  char* string_val = ram_return_value->types.s; 
+  int string_to_num = atoi(string_val); 
+  if (string_to_num==0 && !(strspn(string_val, "0")==strlen(string_val))) {
+    printf("**SEMANTIC ERROR: invalid string for int() (line %d)\n", line); 
+    return false; 
+  }
+  i.types.i=string_to_num; 
+  i.value_type=RAM_TYPE_INT; 
+  ram_write_cell_by_name(memory, i, var_name); 
+  return true; 
+}
+
+bool execute_real(struct VALUE* rhs, struct RAM* memory, char* var_name, int line) {
+  char* identifier = rhs->types.function_call->parameter->element_value;
+  struct RAM_VALUE* ram_return_value = ram_read_cell_by_name(memory, identifier); 
+  struct RAM_VALUE i; 
+  char* string_val = ram_return_value->types.s; 
+  double string_to_real = atof(string_val); 
+  if (string_to_real==0 && !(strspn(string_val, "0")==strlen(string_val))) {
+    printf("**SEMANTIC ERROR: invalid string for float() (line %d)\n", line); 
+    return false; 
+  }
+  i.types.d=string_to_real; 
+  i.value_type=RAM_TYPE_REAL; 
+  ram_write_cell_by_name(memory, i, var_name); 
+  return true; 
+}
 
 //
 // execute_assignment
@@ -229,6 +381,9 @@ bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
       } else if (result_type==RAM_TYPE_STR) {
         i.types.s=result.s; 
         i.value_type=RAM_TYPE_STR; 
+      } else if (result_type==RAM_TYPE_BOOLEAN) {
+        i.types.i=result.i; 
+        i.value_type=RAM_TYPE_BOOLEAN; 
       }
       ram_write_cell_by_name(memory, i, var_name); 
     } else {
@@ -266,15 +421,46 @@ bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
           printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
           return false; 
         }
-        i.types.i=val->types.i;
-        i.value_type=val->value_type; 
+        int ram_type=val->value_type; 
+        if (ram_type==RAM_TYPE_INT) {
+          i.types.i=val->types.i; 
+          i.value_type=RAM_TYPE_INT; 
+        } else if (ram_type==RAM_TYPE_REAL) {
+          i.types.d=val->types.d; 
+          i.value_type=RAM_TYPE_REAL;
+        } else if (ram_type==RAM_TYPE_STR) {
+          i.types.s=val->types.s; 
+          i.value_type=RAM_TYPE_STR;
+        } else if (ram_type==RAM_TYPE_BOOLEAN) {
+          i.types.i=val->types.i; 
+          i.value_type=RAM_TYPE_BOOLEAN;
+        }
         ram_write_cell_by_name(memory, i, var_name); 
       } 
     }
     }
+  } else if (rhs->value_type==VALUE_FUNCTION_CALL) {
+    struct FUNCTION_CALL* func_call=rhs->types.function_call; 
+    char* func_name = func_call->function_name; 
+    if (strcmp(func_name, "input")==0) {
+      execute_input(rhs, memory, var_name); 
+    } else if (strcmp(func_name, "int")==0) {
+      bool success = execute_int(rhs, memory, var_name, line); 
+      if (!success) {
+        return false; 
+      }
+    } else if (strcmp(func_name, "float")==0) {
+      bool success = execute_real(rhs, memory, var_name, line); 
+      if (!success) {
+        return false; 
+      }
+    }
   }
   return true; 
-} 
+}
+
+
+
 
 //
 // execute_function_call
