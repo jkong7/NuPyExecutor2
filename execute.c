@@ -7,6 +7,8 @@
 // operators are also now supported. Function calls now extend from just print to including input, int, and float. Lastly, execution of while loops
 // are supported. 
 //
+//LOG FOR MYSELF: Sunday - Friday afternoon: 26.5 hours 
+//
 // Jonathan Kong 
 // Norhtwestern University 
 // CS 211
@@ -266,7 +268,8 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
   }
 
   ResultUnion result_lhs, result_rhs; 
-  int type_lhs, type_rhs; 
+  int type_lhs= -1; 
+  int type_rhs = -1; 
 
   bool lhs_success = retrieve_value(lhs, &result_lhs, &type_lhs, memory, line); 
   bool rhs_success = retrieve_value(rhs, &result_rhs, &type_rhs, memory, line);
@@ -275,6 +278,10 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
     return false; 
   }
 
+  if (type_lhs==-1 || type_rhs==-1) {
+    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+    return false;
+  }
 
   if (type_lhs==RAM_TYPE_INT && type_rhs == RAM_TYPE_INT) {
     int result_int_operation; 
@@ -326,7 +333,6 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
     int type; 
     bool success = operator_str_concat_evaluate(expr, lhs_str, rhs_str, &result_string_operation, &type, line); 
     if (!success) {
-      //Print semantic error here 
       return false; 
     }
     if (type==RAM_TYPE_STR) {
@@ -488,7 +494,7 @@ bool execute_real(struct VALUE* rhs, struct RAM* memory, char* var_name, int lin
   struct RAM_VALUE i; 
   char* string_val = ram_return_value->types.s; 
   double string_to_real = atof(string_val); 
-  if (string_to_real==0 && !(strspn(string_val, "0")==strlen(string_val))) {
+  if (string_to_real==0.0 && !(strspn(string_val, "0.")==strlen(string_val))) {
     printf("**SEMANTIC ERROR: invalid string for float() (line %d)\n", line); 
     return false; 
   }
@@ -576,6 +582,9 @@ bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
     struct FUNCTION_CALL* func_call=rhs->types.function_call; 
     char* func_name = func_call->function_name; 
     bool success = execute_function(memory, var_name, func_call, func_name, rhs, line); 
+    if (!success) {
+      return false; 
+    }
   }
   return true; 
 }
@@ -590,12 +599,14 @@ bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
 // 
 bool execute_function_call(struct STMT* stmt, struct RAM* memory) {
   struct ELEMENT* element = stmt->types.function_call->parameter; 
+  if (element==NULL) {
+    printf("\n"); 
+    return true; 
+  }
   int line = stmt->line; 
   int elem_type = element->element_type; 
 
-  if (element==NULL) {
-    printf("\n"); 
-  } else if (elem_type==ELEMENT_INT_LITERAL) {
+    if (elem_type==ELEMENT_INT_LITERAL) {
     char* str_literal = element->element_value;
     int num = atoi(str_literal); 
     printf("%d\n", num);
@@ -631,7 +642,7 @@ bool execute_function_call(struct STMT* stmt, struct RAM* memory) {
         printf("False\n"); 
       }
     }
-  }
+  } 
   return true; 
 }
 
