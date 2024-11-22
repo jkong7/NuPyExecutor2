@@ -28,7 +28,7 @@
 
 
 // **IMPORTANT
-// ResultUion is a versatile data structure that allows functions to handle multiple types of return values: 
+// Union that allows functions to handle multiple types of return values: 
 // int, double, and char*. By using this union, functions can return results of varying types through pass-by-reference. 
 // Particularly useful for functions like execute_binary_expression, which need to process expressions 
 // involving different types and return the result in a flexible manner.
