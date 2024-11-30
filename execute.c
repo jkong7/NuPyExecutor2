@@ -79,6 +79,9 @@ bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, str
     } else if (ram_type==RAM_TYPE_STR) {
       result->s = cell_ram_value->types.s;
       *type = RAM_TYPE_STR;
+    } else if (ram_type==RAM_TYPE_PTR) {
+      result->i=cell_ram_value->types.i; 
+      *type=RAM_TYPE_PTR; 
     }
   } 
   return true; 
@@ -94,15 +97,23 @@ bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, str
 // and result type back to the caller (pass by reference)
 // Throws error and returns false if there's a problem (div by zero or invalid operators)
 //
-bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, int* result_int_operation, int* type, int line) {
+bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, int* result_int_operation, int* type, int line, bool p_arithmetic) {
   int res; 
   int operator = expr->operator; 
   if (operator==OPERATOR_PLUS) {
     res = result_lhs + result_rhs; 
-    *type=RAM_TYPE_INT; 
+    if (p_arithmetic) { // pointer arithmetic case: evaluate int res as normal but type should be returned to caller as RAM_TYPE_PTR
+      *type=RAM_TYPE_PTR; 
+    } else {
+      *type=RAM_TYPE_INT; 
+    }
   } else if (operator==OPERATOR_MINUS) {
     res = result_lhs - result_rhs; 
-    *type=RAM_TYPE_INT;
+    if (p_arithmetic) {
+      *type=RAM_TYPE_PTR; 
+    } else {
+      *type=RAM_TYPE_INT; 
+    }
   } else if (operator==OPERATOR_ASTERISK) {
     res = result_lhs * result_rhs; 
     *type=RAM_TYPE_INT;
@@ -282,11 +293,12 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
     printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
     return false;
   }
+  bool p_arithmetic = false; 
 
   if (type_lhs==RAM_TYPE_INT && type_rhs == RAM_TYPE_INT) {
     int result_int_operation; 
     int type; 
-    bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation, &type, line); 
+    bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation, &type, line, p_arithmetic); 
     if (!success) {
       return false; 
     }
@@ -342,13 +354,22 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
       result->i=result_string_operation.i; 
       *result_type=RAM_TYPE_BOOLEAN; 
     }
-  } else {
+  } else if (type_lhs==RAM_TYPE_PTR && type_rhs==RAM_TYPE_INT) { // pointer arithmetic case 
+    bool p_arithmetic = true; 
+    int result_int_operation; 
+    int type; 
+    bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation, &type, line, p_arithmetic); 
+    if (!success) {
+      return false; 
+    }
+    result->i=result_int_operation; 
+    *result_type=RAM_TYPE_PTR; 
+  } else {  
     printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
     return false; 
   }
   return true; 
 }
-
 
 //
 // execute_unary_expression 
@@ -660,6 +681,8 @@ bool execute_function_call(struct STMT* stmt, struct RAM* memory) {
       } else {
         printf("False\n"); 
       }
+    } else if (ram_type==RAM_TYPE_PTR) {
+      printf("%d\n", cell_ram_value->types.i); 
     }
   } 
   return true; 
