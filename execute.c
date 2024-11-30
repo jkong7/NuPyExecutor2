@@ -64,10 +64,31 @@ bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, str
     result->s=string_value; 
     *type=RAM_TYPE_STR; 
   } else if (expr_type==ELEMENT_IDENTIFIER) {
-    struct RAM_VALUE* cell_ram_value = ram_read_cell_by_name(memory, string_value); 
-    if (cell_ram_value==NULL) {
-      printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_value, line);
-      return false; 
+    struct RAM_VALUE* cell_ram_value; 
+    if (expr->expr_type==UNARY_PTR_DEREF) { //handle ptr deref case, first get address that identifier is binded to, then use address to get actual value
+      struct RAM_VALUE* address_val = ram_read_cell_by_name(memory, string_value); 
+      if (address_val==NULL) {
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_value, line);
+        return false;   
+      }
+      if (address_val->value_type!=RAM_TYPE_PTR) {
+        printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+        return false; 
+      }
+      int address = address_val->types.i; 
+      struct RAM_VALUE* pointer_deref_ram_value = ram_read_cell_by_addr(memory, address); 
+      if (pointer_deref_ram_value==NULL) {
+        printf("**SEMANTIC ERROR: '%s' contains invalid address (line %d)\n", string_value, line); 
+        return false; 
+      }
+      cell_ram_value = pointer_deref_ram_value; 
+    }
+    if (expr->expr_type!=UNARY_PTR_DEREF) {
+      cell_ram_value = ram_read_cell_by_name(memory, string_value); 
+      if (cell_ram_value==NULL) {
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_value, line);
+        return false; 
+    }
     }
     int ram_type = cell_ram_value->value_type; 
     if (ram_type==RAM_TYPE_INT) {
@@ -377,7 +398,7 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
 // Executes unary expression - figures out type of expresion and appropriately assigns resulting value to the result union. 
 // Handles int, str, real, boolean, and identifier literals
 //
-bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* string_rhs, ResultUnion* result, int* result_type, int line, bool is_address) {
+bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* string_rhs, ResultUnion* result, int* result_type, int line, bool is_address, bool is_pointer_deref) {
   int assignment_type = expr->lhs->element->element_type; 
   if (assignment_type==ELEMENT_INT_LITERAL) {
     int num = atoi(string_rhs); 
@@ -397,10 +418,11 @@ bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* strin
     result->i=0; 
     *result_type=RAM_TYPE_BOOLEAN; 
   } else if (assignment_type==ELEMENT_IDENTIFIER) {
+    struct RAM_VALUE* val; 
     if (is_address) {
       int address = ram_get_addr(memory, string_rhs); 
       if (address==-1) {
-        printf("**SEMANTIC ERROR: name '%s' is not defined (line '%d')", string_rhs, line); 
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line '%d')\n", string_rhs, line); 
         return false; 
       }
       // in the case of address, assignment binds the int address location of variable (using ram_get_addr)
@@ -408,10 +430,30 @@ bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* strin
       *result_type=RAM_TYPE_PTR; 
       return true; 
     }
-    struct RAM_VALUE* val = ram_read_cell_by_name(memory, string_rhs); 
-    if (val==NULL) {
-      printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
-      return false; 
+    if (is_pointer_deref) { //handle ptr deref case, first get address that identifier is binded to, then use address to get actual value
+      struct RAM_VALUE* address_val = ram_read_cell_by_name(memory, string_rhs); 
+      if (address_val==NULL) {
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
+        return false;   
+      }
+      if (address_val->value_type!=RAM_TYPE_PTR) {
+        printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+        return false; 
+      }
+      int address = address_val->types.i; 
+      struct RAM_VALUE* pointer_deref_ram_value = ram_read_cell_by_addr(memory, address); 
+      if (pointer_deref_ram_value==NULL) {
+        printf("**SEMANTIC ERROR: '%s' contains invalid address (line %d)\n", string_rhs, line); 
+        return false; 
+      }
+      val=pointer_deref_ram_value; 
+    }
+    if (!is_pointer_deref) {
+      val = ram_read_cell_by_name(memory, string_rhs); 
+      if (val==NULL) {
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
+        return false; 
+      }
     }
     int ram_type=val->value_type; 
     if (ram_type==RAM_TYPE_INT) {
@@ -447,12 +489,16 @@ bool execute_expression(struct EXPR* expr, struct RAM* memory, ResultUnion* resu
     }
   } else {
     bool is_address = false; 
+    bool is_pointer_deref = false; 
     struct UNARY_EXPR* unary_expr = expr->lhs; 
     if (unary_expr->expr_type==UNARY_ADDRESS_OF) { // address case, i.e.: '&x'
       is_address=true; 
     }
+    if (unary_expr->expr_type==UNARY_PTR_DEREF) {
+      is_pointer_deref=true; 
+    }
     char* string_rhs = expr->lhs->element->element_value;
-    bool success = execute_unary_expression(expr, memory, string_rhs, &result, &result_type, line, is_address); 
+    bool success = execute_unary_expression(expr, memory, string_rhs, &result, &result_type, line, is_address, is_pointer_deref); 
     if (!success) {
       return false; 
     }
