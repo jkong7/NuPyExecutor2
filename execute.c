@@ -356,7 +356,7 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
 // Executes unary expression - figures out type of expresion and appropriately assigns resulting value to the result union. 
 // Handles int, str, real, boolean, and identifier literals
 //
-bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* string_rhs, ResultUnion* result, int* result_type, int line) {
+bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* string_rhs, ResultUnion* result, int* result_type, int line, bool is_address) {
   int assignment_type = expr->lhs->element->element_type; 
   if (assignment_type==ELEMENT_INT_LITERAL) {
     int num = atoi(string_rhs); 
@@ -376,6 +376,17 @@ bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* strin
     result->i=0; 
     *result_type=RAM_TYPE_BOOLEAN; 
   } else if (assignment_type==ELEMENT_IDENTIFIER) {
+    if (is_address) {
+      int address = ram_get_addr(memory, string_rhs); 
+      if (address==-1) {
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line '%d')", string_rhs, line); 
+        return false; 
+      }
+      // in the case of address, assignment binds the int address location of variable (using ram_get_addr)
+      result->i=address; 
+      *result_type=RAM_TYPE_PTR; 
+      return true; 
+    }
     struct RAM_VALUE* val = ram_read_cell_by_name(memory, string_rhs); 
     if (val==NULL) {
       printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
@@ -414,12 +425,15 @@ bool execute_expression(struct EXPR* expr, struct RAM* memory, ResultUnion* resu
       return false; 
     }
   } else {
+    bool is_address = false; 
+    struct UNARY_EXPR* unary_expr = expr->lhs; 
+    if (unary_expr->expr_type==UNARY_ADDRESS_OF) { // address case, i.e.: '&x'
+      is_address=true; 
+    }
     char* string_rhs = expr->lhs->element->element_value;
-    if (expr->lhs->expr_type==UNARY_ELEMENT) {
-      bool success = execute_unary_expression(expr, memory, string_rhs, &result, &result_type, line); 
-      if (!success) {
-        return false; 
-      }
+    bool success = execute_unary_expression(expr, memory, string_rhs, &result, &result_type, line, is_address); 
+    if (!success) {
+      return false; 
     }
   }
   *result_type_main=result_type; 
@@ -430,6 +444,8 @@ bool execute_expression(struct EXPR* expr, struct RAM* memory, ResultUnion* resu
   } else if (result_type==RAM_TYPE_REAL) {
     result_main->d=result.d; 
   } else if (result_type==RAM_TYPE_BOOLEAN) {
+    result_main->i=result.i; 
+  } else if (result_type==RAM_TYPE_PTR) {
     result_main->i=result.i; 
   }
   return true; 
@@ -547,6 +563,9 @@ struct RAM_VALUE create_ram_value (ResultUnion result, int result_type) {
   } else if (result_type==RAM_TYPE_BOOLEAN) {
     i.types.i=result.i; 
     i.value_type=RAM_TYPE_BOOLEAN; 
+  } else if (result_type==RAM_TYPE_PTR) {
+    i.types.i=result.i; 
+    i.value_type=RAM_TYPE_PTR; 
   }
   return i; 
 }
