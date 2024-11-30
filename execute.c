@@ -1,13 +1,18 @@
 /*execute.c*/
 
 //
-// Executes NuPython code in C - First part: executes only straight-line code - that is function calls, assignments, and pass statements
+// Executes NuPython code in C: 
+// First part: executes only straight-line code - that is function calls, assignments, and pass statements
 // Traverses the program graph, interprets the statements, and executes them by interacting with a RAM memory module for variable storage. 
+//
 // Second part: The executor now supports type int, real, string, and boolean. The executor now also supports a wider range of operand-operator combos and relationak 
 // operators are also now supported. Function calls now extend from just print to including input, int, and float. Lastly, execution of while loops
 // are supported. 
 //
-//LOG FOR MYSELF: Sunday - Friday afternoon: 26.5 hours 
+// Third part: Pointers are now supported!! The & and * unary expressions are supported, where & refers to the address of a variable in memory and 
+// * dereferences a pointer variable to access the underlying value. Pointer arithmetic of the form pointer +/- int literal and pointer-based assignment
+// are also supported. 
+//
 //
 // Jonathan Kong 
 // Norhtwestern University 
@@ -45,11 +50,12 @@ typedef union {
 //
 // Helper function to retrieve the value from an expression 
 // Used to decrypt both the lhs and rhs expressions - deals with all types: 
-// int, real, str, identifier 
+// int, real, str, identifier, ptr
 // Called in execute_binary_expression to compute lhs and rhs of binary expression 
 // Returns false if semantic error (identifier not found in RAM), else true
 //
 bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, struct RAM* memory, int line) {
+  // retrieve values for int, real, str, and identifier cases
   char* string_value = expr->element->element_value; 
   int expr_type = expr->element->element_type; 
   if (expr_type==ELEMENT_INT_LITERAL) {
@@ -65,7 +71,7 @@ bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, str
     *type=RAM_TYPE_STR; 
   } else if (expr_type==ELEMENT_IDENTIFIER) {
     struct RAM_VALUE* cell_ram_value; 
-    if (expr->expr_type==UNARY_PTR_DEREF) { //handle ptr deref case, first get address that identifier is binded to, then use address to get actual value
+    if (expr->expr_type==UNARY_PTR_DEREF) { // handle ptr deref case, first get address that identifier is binded to, then use address to get actual value
       struct RAM_VALUE* address_val = ram_read_cell_by_name(memory, string_value); 
       if (address_val==NULL) {
         printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_value, line);
@@ -81,15 +87,16 @@ bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, str
         printf("**SEMANTIC ERROR: '%s' contains invalid address (line %d)\n", string_value, line); 
         return false; 
       }
-      cell_ram_value = pointer_deref_ram_value; 
+      cell_ram_value = pointer_deref_ram_value; // the cell is given by following the pointer 
     }
-    if (expr->expr_type!=UNARY_PTR_DEREF) {
+    if (expr->expr_type!=UNARY_PTR_DEREF) { // for all other cases, i.e. <unary_expr>=<element> 
       cell_ram_value = ram_read_cell_by_name(memory, string_value); 
       if (cell_ram_value==NULL) {
         printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_value, line);
         return false; 
     }
     }
+    // cell_ram_value is either from non-ptr or ptr case, either way we can now extract the value and type from it and return info to caller 
     int ram_type = cell_ram_value->value_type; 
     if (ram_type==RAM_TYPE_INT) {
       result->i=cell_ram_value->types.i;
@@ -115,20 +122,21 @@ bool retrieve_value(struct UNARY_EXPR* expr, ResultUnion* result, int* type, str
 // It takes care of common operations like addition, subtraction, multiplication, 
 // division, modulus, and also comparison operators like equality or greater than.
 // The function figures out what type the result is (int or boolean) and passes the result 
-// and result type back to the caller (pass by reference)
+// and result type back to the caller (pass by reference). Also handles pointer arithmitic 
+// to which it then passes up the type of RAM_TYPE_PTR back to the caller 
 // Throws error and returns false if there's a problem (div by zero or invalid operators)
 //
 bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, int* result_int_operation, int* type, int line, bool p_arithmetic) {
   int res; 
   int operator = expr->operator; 
-  if (operator==OPERATOR_PLUS) {
+  if (operator==OPERATOR_PLUS) { // handle the int return cases (+, -, *, /, %, **)
     res = result_lhs + result_rhs; 
     if (p_arithmetic) { // pointer arithmetic case: evaluate int res as normal but type should be returned to caller as RAM_TYPE_PTR
       *type=RAM_TYPE_PTR; 
     } else {
       *type=RAM_TYPE_INT; 
     }
-  } else if (operator==OPERATOR_MINUS) {
+  } else if (operator==OPERATOR_MINUS) { // same as above, has a RAM_TYPE_PTR case
     res = result_lhs - result_rhs; 
     if (p_arithmetic) {
       *type=RAM_TYPE_PTR; 
@@ -151,7 +159,7 @@ bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, in
   } else if (operator==OPERATOR_POWER) {
     res = (int)pow(result_lhs, result_rhs); 
     *type=RAM_TYPE_INT;
-  } else if (operator==OPERATOR_EQUAL) {
+  } else if (operator==OPERATOR_EQUAL) { // handle the boolean return cases (=, !=, <, <=, >, >=)
     res = (double)(result_lhs==result_rhs); 
     *type=RAM_TYPE_BOOLEAN; 
   } else if (operator==OPERATOR_NOT_EQUAL) {
@@ -170,10 +178,10 @@ bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, in
     res = (double)(result_lhs>=result_rhs); 
     *type=RAM_TYPE_BOOLEAN;
   } else {
-    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); // semantic error if the operator is not caught by one of the branches above
     return false; 
   }
-  *result_int_operation = res; 
+  *result_int_operation = res; // return both type (caught in branches) and underlying result of operation back to caller 
   return true; 
 }
 
@@ -190,7 +198,7 @@ bool operator_int_evaluate(struct EXPR* expr, int result_lhs, int result_rhs, in
 bool operator_real_evaluate(struct EXPR* expr, double result_lhs, double result_rhs, double* result_real_operation, int* type, int line) {
   double res; 
   int operator = expr->operator; 
-  if (operator==OPERATOR_PLUS) {
+  if (operator==OPERATOR_PLUS) { // handle the real return cases (+, -, *, /, %, **)
     res = result_lhs + result_rhs; 
     *type=RAM_TYPE_REAL; 
   } else if (operator==OPERATOR_MINUS) {
@@ -212,7 +220,7 @@ bool operator_real_evaluate(struct EXPR* expr, double result_lhs, double result_
   } else if (operator==OPERATOR_POWER) {
     res = pow(result_lhs, result_rhs); 
     *type=RAM_TYPE_REAL;
-  } else if (operator==OPERATOR_EQUAL) {
+  } else if (operator==OPERATOR_EQUAL) { // handle the boolean return cases (=, !=, <, <=, >, >=)
     res = (result_lhs==result_rhs); 
     *type=RAM_TYPE_BOOLEAN; 
   } else if (operator==OPERATOR_NOT_EQUAL) {
@@ -231,7 +239,7 @@ bool operator_real_evaluate(struct EXPR* expr, double result_lhs, double result_
     res = (result_lhs>=result_rhs); 
     *type=RAM_TYPE_BOOLEAN;
   } else { 
-    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); // return both type (caught in branches) and underlying result of operation back to caller 
     return false; 
   }
   *result_real_operation = res; 
@@ -249,8 +257,8 @@ bool operator_real_evaluate(struct EXPR* expr, double result_lhs, double result_
 //
 bool operator_str_concat_evaluate(struct EXPR* expr, char* result_lhs, char* result_rhs, ResultUnion* result_string_operation, int* type, int line) {
   int operator = expr->operator; 
-  int str_comp = strcmp(result_lhs, result_rhs); 
-  if (operator==OPERATOR_PLUS) {
+  int str_comp = strcmp(result_lhs, result_rhs); // compares the left and right strings: neg if l<r, 0 if l==r, and 1 if l>r
+  if (operator==OPERATOR_PLUS) { // string concatenation case, malloc enough space (l+r+1) for the new string, then fill in chars with strcpy
     size_t length_lhs = strlen(result_lhs); 
     size_t length_rhs = strlen(result_rhs);
     int concat_length = length_lhs + length_rhs + 1; 
@@ -259,7 +267,7 @@ bool operator_str_concat_evaluate(struct EXPR* expr, char* result_lhs, char* res
     strcat(concat, result_rhs); 
     result_string_operation->s=concat; 
     *type=RAM_TYPE_STR; 
-  } else if (operator==OPERATOR_EQUAL) {
+  } else if (operator==OPERATOR_EQUAL) { // use str_comp (result of strcmp) to evaluate string comparison boolean logic, return result and type (either str or bool) to caller
     result_string_operation->i = (str_comp==0) ? 1 : 0; 
     *type=RAM_TYPE_BOOLEAN; 
   } else if (operator==OPERATOR_NOT_EQUAL) {
@@ -278,7 +286,7 @@ bool operator_str_concat_evaluate(struct EXPR* expr, char* result_lhs, char* res
     result_string_operation->i = (str_comp>=0) ? 1 : 0; 
     *type=RAM_TYPE_BOOLEAN; 
   } else {
-    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+    printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); // semantic error if operator is outside a branch above 
     return false; 
   }
   return true; 
@@ -287,12 +295,12 @@ bool operator_str_concat_evaluate(struct EXPR* expr, char* result_lhs, char* res
 //
 // execute_binary_expression 
 //
-// Executes binary expression by combining lhs and rhs values with appropriate operator 
+// Executes binary expression by combining lhs and rhs values with appropriate operator / supports pointer deref expressions 
 // Makes use of helper functions retrieve_value, operator_int_evaluate, operator_real_evaluate, and operator_str_concat_evaluate
 // Places answer in pass by reference variable result, and the type in result_type, returns false if there was a semantic error, else true
 //
 bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* result_type, struct RAM* memory, int line) {
-  struct UNARY_EXPR* lhs=expr->lhs; 
+  struct UNARY_EXPR* lhs=expr->lhs; // get left and right unary expressions 
   struct UNARY_EXPR* rhs=expr->rhs; 
 
   if (lhs==NULL || rhs==NULL) {
@@ -301,22 +309,21 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
 
   ResultUnion result_lhs, result_rhs; 
   int type_lhs= -1; 
-  int type_rhs = -1; 
+  int type_rhs = -1; // result and type variables for the left and right unary expressions 
 
-  bool lhs_success = retrieve_value(lhs, &result_lhs, &type_lhs, memory, line); 
+  bool lhs_success = retrieve_value(lhs, &result_lhs, &type_lhs, memory, line); // get the underlying value and type for left and right 
   bool rhs_success = retrieve_value(rhs, &result_rhs, &type_rhs, memory, line);
 
   if (!lhs_success || !rhs_success) {
     return false; 
   }
-
   if (type_lhs==-1 || type_rhs==-1) {
     printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
-    return false;
+    return false; // types didn't change from init - early return marked by a semantic error 
   }
-  bool p_arithmetic = false; 
+  bool p_arithmetic = false; // variable signifying pointer arithmitic case 
 
-  if (type_lhs==RAM_TYPE_INT && type_rhs == RAM_TYPE_INT) {
+  if (type_lhs==RAM_TYPE_INT && type_rhs == RAM_TYPE_INT) { // go through binary expression combinations (int-int, real-real, int-real, str-str, ptr-int) using three operator_evaluate helpers! Return resulting value and type to caller
     int result_int_operation; 
     int type; 
     bool success = operator_int_evaluate(expr, result_lhs.i, result_rhs.i, &result_int_operation, &type, line, p_arithmetic); 
@@ -375,7 +382,7 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
       result->i=result_string_operation.i; 
       *result_type=RAM_TYPE_BOOLEAN; 
     }
-  } else if (type_lhs==RAM_TYPE_PTR && type_rhs==RAM_TYPE_INT) { // pointer arithmetic case 
+  } else if (type_lhs==RAM_TYPE_PTR && type_rhs==RAM_TYPE_INT) { // pointer arithmetic case, result type is of type ptr and result calculated using int_evaluate
     bool p_arithmetic = true; 
     int result_int_operation; 
     int type; 
@@ -396,9 +403,10 @@ bool execute_binary_expression(struct EXPR* expr, ResultUnion* result, int* resu
 // execute_unary_expression 
 //
 // Executes unary expression - figures out type of expresion and appropriately assigns resulting value to the result union. 
-// Handles int, str, real, boolean, and identifier literals
+// Handles int, str, real, boolean, identifier literals + ptr
 //
 bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* string_rhs, ResultUnion* result, int* result_type, int line, bool is_address, bool is_pointer_deref) {
+  // evaluate int, str, real, true, false, and identifier cases
   int assignment_type = expr->lhs->element->element_type; 
   if (assignment_type==ELEMENT_INT_LITERAL) {
     int num = atoi(string_rhs); 
@@ -419,18 +427,18 @@ bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* strin
     *result_type=RAM_TYPE_BOOLEAN; 
   } else if (assignment_type==ELEMENT_IDENTIFIER) {
     struct RAM_VALUE* val; 
-    if (is_address) {
+    if (is_address) { // x=&y case (ptr), type is now of ptr and value is the addr of the rhs identifier (using ram_get_addr)
       int address = ram_get_addr(memory, string_rhs); 
       if (address==-1) {
         printf("**SEMANTIC ERROR: name '%s' is not defined (line '%d')\n", string_rhs, line); 
         return false; 
       }
-      // in the case of address, assignment binds the int address location of variable (using ram_get_addr)
+      // in the case of address, assignment binds the int address location of variable, return address value and type ptr to caller
       result->i=address; 
       *result_type=RAM_TYPE_PTR; 
       return true; 
     }
-    if (is_pointer_deref) { //handle ptr deref case, first get address that identifier is binded to, then use address to get actual value
+    if (is_pointer_deref) { //handle ptr deref case, first get address that identifier is binded to, then use address to get actual value, handling three potential semantic error cases
       struct RAM_VALUE* address_val = ram_read_cell_by_name(memory, string_rhs); 
       if (address_val==NULL) {
         printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
@@ -448,13 +456,14 @@ bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* strin
       }
       val=pointer_deref_ram_value; 
     }
-    if (!is_pointer_deref) {
+    if (!is_pointer_deref) { //
       val = ram_read_cell_by_name(memory, string_rhs); 
       if (val==NULL) {
         printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", string_rhs, line);
         return false; 
       }
     }
+    // val contains either a ram_value from ptr deref case or all other cases, we can now extract and return value + type to caller
     int ram_type=val->value_type; 
     if (ram_type==RAM_TYPE_INT) {
       result->i=val->types.i; 
@@ -480,22 +489,23 @@ bool execute_unary_expression(struct EXPR* expr, struct RAM* memory, char* strin
 // based on expression type, returns result and result_type back to caller (execute_assignment)
 //
 bool execute_expression(struct EXPR* expr, struct RAM* memory, ResultUnion* result_main, int* result_type_main, int line) {
+  // Encapsulates binary expression and unary expression, captures value and type of evaluation result and returns to caller which is execute_assignment!
   ResultUnion result; 
   int result_type; 
-  if (expr->isBinaryExpr) {
+  if (expr->isBinaryExpr) { // call execute_binary_expression 
     bool success = execute_binary_expression(expr, &result, &result_type, memory, line); 
     if (!success) {
       return false; 
     }
-  } else {
+  } else { // call execute_unary_expression 
     bool is_address = false; 
     bool is_pointer_deref = false; 
     struct UNARY_EXPR* unary_expr = expr->lhs; 
     if (unary_expr->expr_type==UNARY_ADDRESS_OF) { // address case, i.e.: '&x'
-      is_address=true; 
+      is_address=true; // just let execute_unary_expression know to handle address case by passing booolean 
     }
-    if (unary_expr->expr_type==UNARY_PTR_DEREF) {
-      is_pointer_deref=true; 
+    if (unary_expr->expr_type==UNARY_PTR_DEREF) { // pointer case, i.e.: '*x'
+      is_pointer_deref=true; // just let execute_unary_expression know to handle pointer case by passing boolean 
     }
     char* string_rhs = expr->lhs->element->element_value;
     bool success = execute_unary_expression(expr, memory, string_rhs, &result, &result_type, line, is_address, is_pointer_deref); 
@@ -503,6 +513,7 @@ bool execute_expression(struct EXPR* expr, struct RAM* memory, ResultUnion* resu
       return false; 
     }
   }
+  // value + types are now binded to variables declared at the top of function, extract and return to caller (execute_assignment)
   *result_type_main=result_type; 
   if (result_type==RAM_TYPE_INT) {
     result_main->i=result.i; 
@@ -528,18 +539,18 @@ bool execute_expression(struct EXPR* expr, struct RAM* memory, ResultUnion* resu
 void execute_input(struct VALUE* rhs, struct RAM* memory, char* var_name) {
     struct FUNCTION_CALL* func = rhs->types.function_call; 
     char* func_name = func->function_name; 
-    printf("%s", func->parameter->element_value);
+    printf("%s", func->parameter->element_value); //get user input 
 
     char line[256]; 
     fgets(line, sizeof(line), stdin); 
     line[strcspn(line, "\r\n")] = '\0';
 
-    char* input_string = (char*)malloc(sizeof(line)+1); 
+    char* input_string = (char*)malloc(sizeof(line)+1); // malloc space for input string 
     strcpy(input_string, line); 
     struct RAM_VALUE i; 
     i.types.s=input_string; 
     i.value_type=RAM_TYPE_STR; 
-    ram_write_cell_by_name(memory, i, var_name);
+    ram_write_cell_by_name(memory, i, var_name); // construct ram value of type str with the input string and write to memory 
 }
 
 //
@@ -552,15 +563,15 @@ bool execute_int(struct VALUE* rhs, struct RAM* memory, char* var_name, int line
   char* identifier = rhs->types.function_call->parameter->element_value;
   struct RAM_VALUE* ram_return_value = ram_read_cell_by_name(memory, identifier); 
   struct RAM_VALUE i; 
-  char* string_val = ram_return_value->types.s; 
+  char* string_val = ram_return_value->types.s; // extract string value from identifier and then convert to integer
   int string_to_num = atoi(string_val); 
-  if (string_to_num==0 && !(strspn(string_val, "0")==strlen(string_val))) {
+  if (string_to_num==0 && !(strspn(string_val, "0")==strlen(string_val))) { // semantic error if atoi failed (0 conversion using atoi does NOT cause error)
     printf("**SEMANTIC ERROR: invalid string for int() (line %d)\n", line); 
     return false; 
   }
   i.types.i=string_to_num; 
   i.value_type=RAM_TYPE_INT; 
-  ram_write_cell_by_name(memory, i, var_name); 
+  ram_write_cell_by_name(memory, i, var_name); // construct and write to memory the new int ram value 
   return true; 
 }
 
@@ -575,15 +586,15 @@ bool execute_real(struct VALUE* rhs, struct RAM* memory, char* var_name, int lin
   char* identifier = rhs->types.function_call->parameter->element_value;
   struct RAM_VALUE* ram_return_value = ram_read_cell_by_name(memory, identifier); 
   struct RAM_VALUE i; 
-  char* string_val = ram_return_value->types.s; 
+  char* string_val = ram_return_value->types.s; // extract string value from identifier and then convert to real
   double string_to_real = atof(string_val); 
-  if (string_to_real==0.0 && !(strspn(string_val, "0.")==strlen(string_val))) {
+  if (string_to_real==0.0 && !(strspn(string_val, "0.")==strlen(string_val))) { // semantic error if atof failed (0 conversion using atof does NOT cause error)
     printf("**SEMANTIC ERROR: invalid string for float() (line %d)\n", line); 
     return false; 
   }
   i.types.d=string_to_real; 
   i.value_type=RAM_TYPE_REAL; 
-  ram_write_cell_by_name(memory, i, var_name); 
+  ram_write_cell_by_name(memory, i, var_name); // construct and write to memory the new real ram value 
   return true; 
 }
 
@@ -594,6 +605,7 @@ bool execute_real(struct VALUE* rhs, struct RAM* memory, char* var_name, int lin
 // Propogates a false-return back to caller, otherwise returns true which signifies function successful function completion
 //
 bool execute_function(struct RAM* memory, char* var_name, struct FUNCTION_CALL* func_call, char* func_name, struct VALUE* rhs, int line) {
+  // Encapsulates input, real, and float, and branches to one of the three evaluation helpers based on function name 
     if (strcmp(func_name, "input")==0) {
       execute_input(rhs, memory, var_name); 
     } else if (strcmp(func_name, "int")==0) {
@@ -634,7 +646,7 @@ struct RAM_VALUE create_ram_value (ResultUnion result, int result_type) {
     i.types.i=result.i; 
     i.value_type=RAM_TYPE_PTR; 
   }
-  return i; 
+  return i; // create and return ram value to helper 
 }
 
 //
@@ -643,31 +655,52 @@ struct RAM_VALUE create_ram_value (ResultUnion result, int result_type) {
 // Executes an assignment statement, handles: 
 // 1. Unary expressions
 // 2. Binary expressions 
-// 3. Assigning to functions input, float, and int
+// 3. Pointer dereferencing assignment (rhs can be unary or binary as above)
+// 4. Assigning to functions input, float, and int
 // Writes result of assignment RHS to memory under the var_name of the assignment 
 // Returns false if any error propogates up to this point and stops execution, returns true otherwise 
 //
 
 bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
+  bool isPtrDeref = stmt->types.assignment->isPtrDeref; 
   char* var_name = stmt->types.assignment->var_name; 
   int line = stmt->line;
   struct VALUE* rhs = stmt->types.assignment->rhs; 
 
-  if (rhs->value_type==VALUE_EXPR) {
+  if (isPtrDeref) { //PtrDeref case, the lhs var_name is now achieved through following the pointer and getting the identifier of the cell the pointer references, handles three semantic error cases
+    struct RAM_VALUE* address_val = ram_read_cell_by_name(memory, var_name); 
+      if (address_val==NULL) {
+        printf("**SEMANTIC ERROR: name '%s' is not defined (line %d)\n", var_name, line);
+        return false;   
+      }
+      if (address_val->value_type!=RAM_TYPE_PTR) {
+        printf("**SEMANTIC ERROR: invalid operand types (line %d)\n", line); 
+        return false; 
+      }
+      int address = address_val->types.i; 
+      struct RAM_VALUE* pointer_deref_ram_value = ram_read_cell_by_addr(memory, address); 
+      if (pointer_deref_ram_value==NULL) {
+        printf("**SEMANTIC ERROR: '%s' contains invalid address (line %d)\n", var_name, line); 
+        return false; 
+      }
+      var_name = memory->cells[address].identifier; 
+  }
+
+  if (rhs->value_type==VALUE_EXPR) { // expression case
     struct EXPR* expr = rhs->types.expr; 
     ResultUnion result_main; 
     int result_type_main; 
-    bool success = execute_expression(expr, memory, &result_main, &result_type_main, line); 
+    bool success = execute_expression(expr, memory, &result_main, &result_type_main, line); // get type and result of expression 
     if (!success) {
       return false; 
     }
-    struct RAM_VALUE i = create_ram_value(result_main, result_type_main); 
-    ram_write_cell_by_name(memory, i, var_name); 
+    struct RAM_VALUE i = create_ram_value(result_main, result_type_main); // create ram value from result anda type
+    ram_write_cell_by_name(memory, i, var_name); // finally, write assignment result to memory! note: the lhs var_name is handled for pointer-based assignment as in the isPtrDeref branch
 
-  } else if (rhs->value_type==VALUE_FUNCTION_CALL) {
+  } else if (rhs->value_type==VALUE_FUNCTION_CALL) { // function case
     struct FUNCTION_CALL* func_call=rhs->types.function_call; 
     char* func_name = func_call->function_name; 
-    bool success = execute_function(memory, var_name, func_call, func_name, rhs, line); 
+    bool success = execute_function(memory, var_name, func_call, func_name, rhs, line); // either int, float, or input, handle via execute_function 
     if (!success) {
       return false; 
     }
@@ -680,10 +713,11 @@ bool execute_assignment(struct STMT* stmt, struct RAM* memory) {
 //
 // execute_function_call
 //
-// Executes the print() function call which handles all types: int, real, str, boolean, identifier 
+// Executes the print() function call which handles all types: int, real, str, boolean, identifier, ptr
 // Returns false if there was a semantic error (identifier name not previously written to memory), returns true otherwise
 // 
 bool execute_function_call(struct STMT* stmt, struct RAM* memory) {
+  // STRICTLY FOR THE PRINT FUNCTION
   struct ELEMENT* element = stmt->types.function_call->parameter; 
   if (element==NULL) {
     printf("\n"); 
@@ -692,7 +726,7 @@ bool execute_function_call(struct STMT* stmt, struct RAM* memory) {
   int line = stmt->line; 
   int elem_type = element->element_type; 
 
-    if (elem_type==ELEMENT_INT_LITERAL) {
+    if (elem_type==ELEMENT_INT_LITERAL) { // handle different print cases, int, real, str, true, false, and identifier 
     char* str_literal = element->element_value;
     int num = atoi(str_literal); 
     printf("%d\n", num);
@@ -707,7 +741,7 @@ bool execute_function_call(struct STMT* stmt, struct RAM* memory) {
     printf("True\n");
   } else if (elem_type==ELEMENT_FALSE) {
     printf("False\n");
-  } else if (elem_type==ELEMENT_IDENTIFIER) {
+  } else if (elem_type==ELEMENT_IDENTIFIER) { // identifier for print encapsulates real, int, str, boolean, and ptr cases
     char* identifier = element->element_value;  
     struct RAM_VALUE* cell_ram_value = ram_read_cell_by_name(memory, identifier); 
     if (cell_ram_value==NULL) {
@@ -752,13 +786,13 @@ void execute(struct STMT* program, struct RAM* memory)
 
   while (stmt!=NULL) {
     if (stmt->stmt_type==STMT_ASSIGNMENT) {
-      bool success = execute_assignment(stmt, memory);
+      bool success = execute_assignment(stmt, memory); // assignment case, (rhs is either an expression-unary/binary OR a function call to input, real, float)
       if (!success) {
         return; 
       }
       stmt=stmt->types.assignment->next_stmt; 
     } else if (stmt->stmt_type==STMT_FUNCTION_CALL) {
-      bool success = execute_function_call(stmt, memory); 
+      bool success = execute_function_call(stmt, memory); // STRICTLY for print function 
       if (!success) {
         return; 
       }
